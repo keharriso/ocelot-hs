@@ -1,0 +1,60 @@
+name:                ocelot
+version:             0.1.0.0
+github:              "keharriso/ocelot-hs"
+license:             MIT
+author:              "Kevin Harrison"
+maintainer:          "keharriso@gmail.com"
+copyright:           "2023 Kevin Harrison"
+
+extra-source-files:
+- README.md
+
+# Metadata used when publishing your package
+synopsis:            Parse C headers
+category:            Language
+
+# To avoid duplicated efforts in documentation and dealing with the
+# complications of embedding Haddock markup inside cabal files, it is
+# common to point users to the README.md file.
+description:         Please see the README on GitHub at <https://github.com/keharriso/ocelot-hs#readme>
+
+build-type: Custom
+
+custom-setup:
+  dependencies:
+  - base >= 4.7 && < 5
+  - Cabal >= 3
+  - process >= 1.6
+
+dependencies:
+- base >= 4.7 && < 5
+
+ghc-options:
+- -Wall
+- -Wcompat
+- -Widentities
+- -Wincomplete-record-updates
+- -Wincomplete-uni-patterns
+- -Wmissing-export-lists
+- -Wmissing-home-modules
+- -Wpartial-fields
+- -Wredundant-constraints
+
+library:
+  source-dirs: src
+  build-tools: hsc2hs
+  c-sources:
+  - lib/ocelot/src/ocelot.c
+  include-dirs: lib/ocelot/src
+  extra-libraries: clang
+
+tests:
+  ocelot-test:
+    main:                Spec.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - ocelot
