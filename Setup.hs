@@ -30,6 +30,7 @@ import Distribution.Simple.LocalBuildInfo
 import Distribution.Simple.Setup
 import Distribution.Simple.Utils
 import Distribution.Verbosity
+import System.Directory (doesFileExist)
 import System.Environment
 import System.IO.Error
 import System.Process
@@ -131,6 +132,15 @@ ocelotConfHook (d, bi) flags = do
                     }
         Nothing -> return localBuildInfo
 
+ocelotPreBuild :: Args -> BuildFlags -> IO HookedBuildInfo
+ocelotPreBuild args buildFlags = do
+    let verbosity = fromFlagOrDefault normal $ buildVerbosity buildFlags
+    submoduleExists <- doesFileExist "lib/ocelot/src/ocelot.c"
+    if not submoduleExists
+        then rawSystemExit verbosity "stack" ["exec", "--", "git", "clone", "--depth", "1", "https://github.com/keharriso/ocelot", "lib/ocelot"]
+        else return ()
+    preBuild simpleUserHooks args buildFlags
+
 main :: IO ()
 main = do
-    defaultMainWithHooks simpleUserHooks{confHook = ocelotConfHook}
+    defaultMainWithHooks simpleUserHooks{confHook = ocelotConfHook, preBuild = ocelotPreBuild}
