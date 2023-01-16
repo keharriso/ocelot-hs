@@ -24,7 +24,15 @@ THE SOFTWARE.
 
 {-# LANGUAGE CApiFFI #-}
 
-module Ocelot ( parse ) where
+module Ocelot
+    ( CSymbol (..)
+    , CSymbolClass (..)
+    , CSymbolLinkage (..)
+    , CType (..)
+    , RecordField
+    , EnumField
+    , EnumValue
+    , parse ) where
 
 #include "ocelot.h"
 
