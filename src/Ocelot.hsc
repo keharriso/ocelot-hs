@@ -95,22 +95,25 @@ foreign import capi "ocelot.h ocelot_parse" ocelotParse :: CString -> Ptr CStrin
 foreign import capi "ocelot.h ocelot_symbols_get_all" ocelotSymbolsGetAll :: Ptr () -> IO (Ptr ())
 foreign import capi "ocelot.h ocelot_symbols_delete" ocelotSymbolsDelete :: Ptr () -> IO ()
 
-parse :: String -> [String] -> IO [CSymbol]
+parse :: String -> [String] -> IO (Maybe [CSymbol])
 parse filePath includeDirs = do
     filePathCs <- newCString filePath
     includeDirsArray <- newArray0 nullPtr =<< traverse newCString includeDirs
     symbolTable <- ocelotParse filePathCs includeDirsArray
-    symbolsPointer <- ocelotSymbolsGetAll symbolTable
-    let symbolsArray = castPtr symbolsPointer :: Ptr (Ptr ())
-    symbolPointers <- peekArray0 nullPtr symbolsArray
-    symbols <- traverse createSymbol symbolPointers
     free filePathCs
     includeDirsCsList <- peekArray0 nullPtr includeDirsArray
     traverse_ free includeDirsCsList 
     free includeDirsArray
-    ocelotSymbolsDelete symbolTable
-    free symbolsPointer
-    return symbols
+    if symbolTable /= nullPtr
+        then do
+            symbolsPointer <- ocelotSymbolsGetAll symbolTable
+            let symbolsArray = castPtr symbolsPointer :: Ptr (Ptr ())
+            symbolPointers <- peekArray0 nullPtr symbolsArray
+            symbols <- traverse createSymbol symbolPointers
+            ocelotSymbolsDelete symbolTable
+            free symbolsPointer
+            return $ Just symbols
+        else return Nothing
 
 createSymbol :: Ptr () -> IO CSymbol
 createSymbol p = do
