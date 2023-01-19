@@ -81,10 +81,11 @@ data CType
     | CT_Double
     | CT_LDouble
     | CT_Bool
-    | CT_Function (Maybe String) CType [CType] Bool
-    | CT_Struct (Maybe String) (Maybe [RecordField])
-    | CT_Union (Maybe String) (Maybe [RecordField])
-    | CT_Enum (Maybe String) (Maybe [EnumField])
+    | CT_Function CType [CType] Bool
+    | CT_Struct [RecordField]
+    | CT_Union [RecordField]
+    | CT_Enum [EnumField]
+    | CT_Named String
     deriving (Eq, Show)
 
 type RecordField = (String, CType)
@@ -123,7 +124,7 @@ createSymbol p = do
     rawElaborated <- #{peek ocelot_symbol, elaborated} p
     rawTypePtr <- #{peek ocelot_symbol, type} p
 
-    sName <- peekCString rawName
+    sName <- peekCString (castPtr rawName)
     let sClass = toEnum $ fromIntegral (rawClass :: #{type ocelot_symbol_class})
     let sLinkage = toEnum $ fromIntegral (rawLinkage :: #{type ocelot_symbol_linkage})
     let sElaborated = rawElaborated :: Bool
@@ -144,8 +145,8 @@ createType p = do
 
     case (rawClass :: #{type ocelot_type_class}) of
         0  -> return CT_Void
-        1  -> createPointerType rawCompoundPtr
-        2  -> createArrayType rawCompoundPtr
+        1  -> createPointerType rawName rawCompoundPtr
+        2  -> createArrayType rawName rawCompoundPtr
         3  -> return CT_Char
         4  -> return CT_UChar
         5  -> return CT_Short
@@ -166,34 +167,31 @@ createType p = do
         20 -> createEnumType rawName rawCompoundPtr
         _  -> return CT_Void
 
-createPointerType :: Ptr () -> IO CType
-createPointerType p = do
+createPointerType :: Ptr () -> Ptr () -> IO CType
+createPointerType rawName p = do
     let rawPointer = #{ptr ocelot_compound_type, pointer} p
     rawIndirection <- #{peek struct ocelot_pointer_type, indirection} rawPointer
     rawBaseType <- #{peek struct ocelot_pointer_type, base_type} rawPointer
 
-    let pIndirection = rawIndirection :: #{type int}
-    pBaseType <- createType rawBaseType
+    if rawBaseType == nullPtr
+        then CT_Named <$> peekCString (castPtr rawName)
+        else do
+                let pIndirection = rawIndirection :: #{type int}
+                pBaseType <- createType rawBaseType
+                return $ CT_Pointer pBaseType $ fromIntegral pIndirection
 
-    return $ CT_Pointer pBaseType $ fromIntegral pIndirection
-
-createArrayType :: Ptr () -> IO CType
-createArrayType p = do
+createArrayType :: Ptr () -> Ptr () -> IO CType
+createArrayType rawName p = do
     let rawPointer = #{ptr ocelot_compound_type, array} p
     rawSize <- #{peek struct ocelot_array_type, size} rawPointer
     rawBaseType <- #{peek struct ocelot_array_type, base_type} rawPointer
 
-    let aSize = rawSize :: #{type int}
-    aBaseType <- createType rawBaseType
-
-    return $ CT_Array aBaseType $ fromIntegral aSize
-
-unwrapName :: Ptr () -> IO (Maybe String)
-unwrapName rawName
-    | rawName == nullPtr = return Nothing
-    | otherwise = do
-        name <- peekCString $ castPtr rawName
-        return $ Just name
+    if rawBaseType == nullPtr
+        then CT_Named <$> peekCString (castPtr rawName)
+        else do
+                let aSize = rawSize :: #{type int}
+                aBaseType <- createType rawBaseType
+                return $ CT_Array aBaseType $ fromIntegral aSize
 
 createFunctionType :: Ptr () -> Ptr () -> IO CType
 createFunctionType rawName p = do
@@ -202,12 +200,13 @@ createFunctionType rawName p = do
     rawReturnType <- #{peek struct ocelot_function_type, return_type} rawPointer
     rawVariadic <- #{peek struct ocelot_function_type, variadic} rawPointer
 
-    fName <- unwrapName rawName
-    fParameters <- createFunctionParameterTypes rawParameters
-    fReturnType <- createType rawReturnType
-    let fVariadic = rawVariadic :: Bool
-
-    return $ CT_Function fName fReturnType fParameters fVariadic
+    if rawReturnType == nullPtr
+        then CT_Named <$> peekCString (castPtr rawName)
+        else do
+                fParameters <- createFunctionParameterTypes rawParameters
+                fReturnType <- createType rawReturnType
+                let fVariadic = rawVariadic :: Bool
+                return $ CT_Function fReturnType fParameters fVariadic
 
 createFunctionParameterTypes :: Ptr () -> IO [CType]
 createFunctionParameterTypes p = do
@@ -220,45 +219,42 @@ createStructType = createRecordType CT_Struct
 createUnionType :: Ptr () -> Ptr () -> IO CType
 createUnionType = createRecordType CT_Union
 
-createRecordType :: ((Maybe String) -> (Maybe [RecordField]) -> CType) -> Ptr () -> Ptr () -> IO CType
+createRecordType :: ([RecordField] -> CType) -> Ptr () -> Ptr () -> IO CType
 createRecordType recordType rawName p = do
-    name <- unwrapName rawName
     rawFieldsPointer <- #{peek ocelot_compound_type, record_fields} p
-    if rawFieldsPointer /= nullPtr then do
-        rawFields <- peekArray0 nullPtr rawFieldsPointer
-        fields <- traverse createRecordField rawFields
-        return $ recordType name (Just fields)
-    else
-        return $ recordType name Nothing
-    
+    if rawFieldsPointer == nullPtr
+        then CT_Named <$> peekCString (castPtr rawName)
+        else do
+                rawFields <- peekArray0 nullPtr rawFieldsPointer
+                fields <- traverse createRecordField rawFields
+                return $ recordType fields
 
 createRecordField :: Ptr () -> IO RecordField
 createRecordField p = do
     rawName <- #{peek ocelot_record_field, name} p
     rawType <- #{peek ocelot_record_field, type} p
 
-    fieldName <- peekCString rawName
+    fieldName <- peekCString (castPtr rawName)
     fieldType <- createType rawType
 
     return (fieldName, fieldType)
 
 createEnumType :: Ptr () -> Ptr () -> IO CType
 createEnumType rawName p = do
-    name <- unwrapName rawName
     rawFieldsPointer <- #{peek ocelot_compound_type, enum_fields} p
-    if rawFieldsPointer /= nullPtr then do
-        rawFields <- peekArray0 nullPtr rawFieldsPointer
-        fields <- traverse createEnumField rawFields
-        return $ CT_Enum name (Just fields)
-    else
-        return $ CT_Enum name Nothing
+    if rawFieldsPointer == nullPtr
+        then CT_Named <$> peekCString (castPtr rawName)
+        else do
+                rawFields <- peekArray0 nullPtr rawFieldsPointer
+                fields <- traverse createEnumField rawFields
+                return $ CT_Enum fields
 
 createEnumField :: Ptr () -> IO EnumField
 createEnumField p = do
     rawName <- #{peek ocelot_enum_field, name} p
     rawValue <- #{peek ocelot_enum_field, value} p
 
-    fieldName <- peekCString rawName
+    fieldName <- peekCString (castPtr rawName)
     let fieldValue = rawValue :: #{type long long}
 
     return (fieldName, fieldValue)
