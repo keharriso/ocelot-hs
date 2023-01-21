@@ -29,9 +29,9 @@ module Ocelot
     , CSymbolClass (..)
     , CSymbolLinkage (..)
     , CType (..)
-    , RecordField
-    , EnumField
-    , EnumValue
+    , CRecordField
+    , CEnumField
+    , CEnumValue
     , parse ) where
 
 #include "ocelot.h"
@@ -81,16 +81,17 @@ data CType
     | CT_Double
     | CT_LDouble
     | CT_Bool
-    | CT_Function CType [CType] Bool
-    | CT_Struct [RecordField]
-    | CT_Union [RecordField]
-    | CT_Enum [EnumField]
+    | CT_Function CType [CType] Variadic
+    | CT_Struct [CRecordField]
+    | CT_Union [CRecordField]
+    | CT_Enum [CEnumField]
     | CT_Named String
     deriving (Eq, Show)
 
-type RecordField = (String, CType)
-type EnumField = (String, EnumValue)
-type EnumValue = #{type long long}
+type Variadic = Bool
+type CRecordField = (String, CType)
+type CEnumField = (String, CEnumValue)
+type CEnumValue = #{type long long}
 
 foreign import capi "ocelot.h ocelot_parse" ocelotParse :: CString -> Ptr CString -> IO (Ptr ())
 foreign import capi "ocelot.h ocelot_symbols_get_all" ocelotSymbolsGetAll :: Ptr () -> IO (Ptr ())
@@ -205,7 +206,7 @@ createFunctionType rawName p = do
         else do
                 fParameters <- createFunctionParameterTypes rawParameters
                 fReturnType <- createType rawReturnType
-                let fVariadic = rawVariadic :: Bool
+                let fVariadic = rawVariadic :: Variadic
                 return $ CT_Function fReturnType fParameters fVariadic
 
 createFunctionParameterTypes :: Ptr () -> IO [CType]
@@ -219,7 +220,7 @@ createStructType = createRecordType CT_Struct
 createUnionType :: Ptr () -> Ptr () -> IO CType
 createUnionType = createRecordType CT_Union
 
-createRecordType :: ([RecordField] -> CType) -> Ptr () -> Ptr () -> IO CType
+createRecordType :: ([CRecordField] -> CType) -> Ptr () -> Ptr () -> IO CType
 createRecordType recordType rawName p = do
     rawFieldsPointer <- #{peek ocelot_compound_type, record_fields} p
     if rawFieldsPointer == nullPtr
@@ -229,7 +230,7 @@ createRecordType recordType rawName p = do
                 fields <- traverse createRecordField rawFields
                 return $ recordType fields
 
-createRecordField :: Ptr () -> IO RecordField
+createRecordField :: Ptr () -> IO CRecordField
 createRecordField p = do
     rawName <- #{peek ocelot_record_field, name} p
     rawType <- #{peek ocelot_record_field, type} p
@@ -249,7 +250,7 @@ createEnumType rawName p = do
                 fields <- traverse createEnumField rawFields
                 return $ CT_Enum fields
 
-createEnumField :: Ptr () -> IO EnumField
+createEnumField :: Ptr () -> IO CEnumField
 createEnumField p = do
     rawName <- #{peek ocelot_enum_field, name} p
     rawValue <- #{peek ocelot_enum_field, value} p
