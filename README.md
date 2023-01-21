@@ -8,6 +8,7 @@ Parse C headers to identify function prototypes, type declarations, and global v
 
 ```bash
 $ git clone --recursive https://github.com/keharriso/ocelot-hs.git
+$ cd ocelot-hs
 $ stack build
 $ stack test
 ```
