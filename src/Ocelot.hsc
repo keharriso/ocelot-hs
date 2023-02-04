@@ -29,6 +29,7 @@ module Ocelot
     , CSymbolClass (..)
     , CSymbolLinkage (..)
     , CType (..)
+    , CVariadic
     , CRecordField
     , CEnumField
     , CEnumValue
@@ -81,14 +82,14 @@ data CType
     | CT_Double
     | CT_LDouble
     | CT_Bool
-    | CT_Function CType [CType] Variadic
+    | CT_Function CType [CType] CVariadic
     | CT_Struct [CRecordField]
     | CT_Union [CRecordField]
     | CT_Enum [CEnumField]
     | CT_Named String
     deriving (Eq, Show)
 
-type Variadic = Bool
+type CVariadic = Bool
 type CRecordField = (String, CType)
 type CEnumField = (String, CEnumValue)
 type CEnumValue = #{type long long}
@@ -206,7 +207,7 @@ createFunctionType rawName p = do
         else do
                 fParameters <- createFunctionParameterTypes rawParameters
                 fReturnType <- createType rawReturnType
-                let fVariadic = rawVariadic :: Variadic
+                let fVariadic = rawVariadic :: CVariadic
                 return $ CT_Function fReturnType fParameters fVariadic
 
 createFunctionParameterTypes :: Ptr () -> IO [CType]
