@@ -30,7 +30,7 @@ import Distribution.Simple.LocalBuildInfo
 import Distribution.Simple.Setup
 import Distribution.Simple.Utils
 import Distribution.Verbosity
-import System.Directory (doesFileExist)
+import System.Directory (doesDirectoryExist, doesFileExist)
 import System.Environment
 import System.IO.Error
 import System.Process
@@ -64,7 +64,9 @@ findLLVMConfigPaths verbosity = do
                   | major <- [9, 8 .. 3 :: Int]
                   , minor <- [9, 8 .. 0 :: Int]
                   ]
-    let tryCandidates [] = die' verbosity $ "Could not find llvm-config with minimum version " ++ Version.showVersion minVersion ++ "."
+    let tryCandidates [] = do
+            putStrLn $ "Could not find llvm-config with minimum version " ++ Version.showVersion minVersion ++ "."
+            return $ LLVMPathInfo "" ""
         tryCandidates (llvmConfig : candidates) = do
             llvmConfigResult <-
                 tryJust
@@ -86,7 +88,30 @@ findLLVMConfigPaths verbosity = do
                                         tryCandidates candidates
                                 _ -> die' verbosity "Couldn't parse llvm-config version string."
                         _ -> die' verbosity "Unexpected llvm-config output."
-    tryCandidates llvmConfigCandidates
+    pathInfo <- tryCandidates llvmConfigCandidates
+    includeDirExists <- doesDirectoryExist $ llvmIncludeDir pathInfo
+    libraryDirExists <- doesDirectoryExist $ llvmLibraryDir pathInfo
+    if includeDirExists && libraryDirExists
+        then return pathInfo
+        else searchDefaultLocations
+
+searchDefaultLocations :: IO LLVMPathInfo
+searchDefaultLocations =
+    let defaultIncludeDirs = ["C:\\Program Files\\LLVM\\include"]
+        defaultLibraryDirs = ["C:\\Program Files\\LLVM\\lib"]
+     in do
+            includeDir <- searchLocations defaultIncludeDirs
+            libraryDir <- searchLocations defaultLibraryDirs
+            when (includeDir /= "" && libraryDir /= "") $ do
+                putStrLn $ "Using default include directory: " ++ includeDir
+                putStrLn $ "Using default library directory: " ++ libraryDir
+            return $ LLVMPathInfo libraryDir includeDir
+  where
+    searchLocations :: [FilePath] -> IO FilePath
+    searchLocations locations =
+        case locations of
+            (location : ls) -> doesDirectoryExist location >>= \exists -> if exists then return location else searchLocations ls
+            _ -> return ""
 
 getLLVMPathInfo :: Verbosity -> IO LLVMPathInfo
 getLLVMPathInfo verbosity = do

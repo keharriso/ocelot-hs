@@ -68,7 +68,7 @@ data CType
     = CT_Void
     | CT_Pointer CType Int
     | CT_Array CType Int
-    | CT_Char
+    | CT_SChar
     | CT_UChar
     | CT_Short
     | CT_UShort
@@ -149,7 +149,7 @@ createType p = do
         0  -> return CT_Void
         1  -> createPointerType rawName rawCompoundPtr
         2  -> createArrayType rawName rawCompoundPtr
-        3  -> return CT_Char
+        3  -> return CT_SChar
         4  -> return CT_UChar
         5  -> return CT_Short
         6  -> return CT_UShort
